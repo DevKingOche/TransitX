@@ -1,0 +1,55 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: transitx
+      POSTGRES_PASSWORD: transitx
+      POSTGRES_DB: transitx
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U transitx"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://transitx:transitx@postgres:5432/transitx
+      JWT_SECRET: change-me-in-production-min-32-chars
+      STELLAR_NETWORK: testnet
+      NODE_ENV: development
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./backend/src:/app/src:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:4000
+      NEXT_PUBLIC_STELLAR_NETWORK: testnet
+    ports:
+      - "3000:3000"
+
+volumes:
+  postgres_data:

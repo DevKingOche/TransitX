@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
+          NEXT_PUBLIC_STELLAR_NETWORK: mainnet
+          NEXT_PUBLIC_TRANSITX_PLATFORM_ADDRESS: GPLACEHOLDER
+          NEXT_PUBLIC_API_URL: https://api.transitx.dev
+          NEXT_PUBLIC_REGISTRY_CONTRACT_ID: placeholder
+          NEXT_PUBLIC_ESCROW_CONTRACT_ID: placeholder
+
+      - name: Build contracts (WASM)
+        working-directory: contracts
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --target wasm32-unknown-unknown --release
+
+      - name: Create release archive
+        run: |
+          mkdir -p dist
+          cp contracts/target/wasm32-unknown-unknown/release/freight_escrow.wasm dist/
+          cp contracts/target/wasm32-unknown-unknown/release/freight_registry.wasm dist/
+          tar -czf transitx-${{ steps.version.outputs.VERSION }}-contracts.tar.gz -C dist .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: TransitX ${{ steps.version.outputs.VERSION }}
+          body_path: CHANGELOG.md
+          files: |
+            transitx-${{ steps.version.outputs.VERSION }}-contracts.tar.gz
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
